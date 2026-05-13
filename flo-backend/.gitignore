@@ -1,0 +1,23 @@
+# Python virtual environment
+**/venv/
+ENV/
+env/
+
+# Python byte-code (compiled files)
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables and secrets (CRITICAL for security)
+.env
+
+# VS Code settings
+.vscode/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Database logs or local dumps (optional)
+*.log
+local_db_dump.sql
