@@ -1,11 +1,11 @@
 # Python virtual environment
 **/venv/
 ENV/
-env/
+env/g
 
 # Python byte-code (compiled files)
 **/__pycache__/
-*.py[cod]
+*.pyc
 *$py.class
 
 # Environment variables and secrets (CRITICAL for security)
