@@ -1,19 +1,39 @@
+# needed imports
+
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from passlib.context import CryptContext
-import jwt
-from datetime import datetime, timedelta
-
+from datetime import date, datetime, timedelta
 from models import User, SessionLocal
 from sqlalchemy.orm import Session
+from fastapi.security import OAuth2PasswordBearer
+import jwt
+
 
 app = FastAPI()
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+SECRET_KEY = "flo-super-secret-key-for-jwt"
+ALGORITHM = "HS256"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# pydantic filters
 
 class UserCreate(BaseModel):
     email: str
     password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class TransactionCreate(BaseModel):
+    amount: float
+    type: str
+    description: str
+    transaction_date: date
+    category_id: int
+
+# helper functions
 
 def get_db():
     db = SessionLocal()
@@ -21,6 +41,22 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+    
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Wristband expired, please log in again")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Fake wristband")
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    
+    return user
+
+# endpoints
 
 @app.post("/register")
 def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -37,12 +73,7 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
 
     return {"message": "User created successfully", "user_id": new_user.id}
 
-SECRET_KEY = "flo-super-secret-key-for-jwt"
-ALGORITHM = "HS256"
 
-class UserLogin(BaseModel):
-    email: str
-    password: str
 
 @app.post("/login")
 def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
@@ -63,4 +94,26 @@ def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "message": "Login successful"
     }
+
+@app.post("/transactions")
+def add_transaction(
+    transaction_data: TransactionCreate, 
+    db: Session = Depends(get_db),       
+    current_user: User = Depends(get_current_user) 
+):
+    
+    new_transaction = Transaction(
+        amount=transaction_data.amount,
+        type=transaction_data.type,
+        description=transaction_data.description,
+        transaction_date=transaction_data.transaction_date,
+        category_id=transaction_data.category_id,
+        user_id=current_user.id 
+    )
+    
+    db.add(new_transaction)
+    db.commit()
+    
+    return {"message": "Transaction saved successfully!"}
+
 
