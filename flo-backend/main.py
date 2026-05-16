@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 import jwt
 
-
 app = FastAPI()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "flo-super-secret-key-for-jwt"
@@ -35,14 +34,20 @@ class TransactionCreate(BaseModel):
 
 # helper functions
 
-def get_db():
+# key master
+def get_db(): 
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+# security guard
+def get_current_user(  
+        token: str = Depends(oauth2_scheme), 
+        db: Session = Depends(get_db)
+    ):
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
@@ -53,13 +58,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise HTTPException(status_code=401, detail="Fake wristband")
 
     user = db.query(User).filter(User.id == int(user_id)).first()
-    
     return user
 
 # endpoints
-
+# new member sign up desk
 @app.post("/register")
 def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
+    
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -74,14 +79,18 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     return {"message": "User created successfully", "user_id": new_user.id}
 
 
-
+# earning the VIP wristband
 @app.post("/login")
 def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
+    
+    # check email and password
     user = db.query(User).filter(User.email == user_data.email).first()
     if not user or not pwd_context.verify(user_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    # make a wristband
     expiration_time = datetime.utcnow() + timedelta(hours=2)
-
+    
     payload = {
         "sub" : str(user.id),
         "exp" : expiration_time
