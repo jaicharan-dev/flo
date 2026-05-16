@@ -116,4 +116,58 @@ def add_transaction(
     
     return {"message": "Transaction saved successfully!"}
 
+@app.get("/transactions")
+def get_transactions(
+        db: Session = Depends(get_db),                 
+        current_user: User = Depends(get_current_user)
+    ):
+    
+    user_transactions = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()    
+    return user_transactions
 
+@app.put("/transactions/{transaction_id}")
+def update_transaction(
+        transaction_id: int,                           
+        transaction_data: TransactionCreate,           
+        db: Session = Depends(get_db),                 
+        current_user: User = Depends(get_current_user) 
+    ):
+    
+    transaction_to_update = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+
+    
+    if not transaction_to_update:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if transaction_to_update.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own transactions")
+        
+    transaction_to_update.amount = transaction_data.amount
+    transaction_to_update.type = transaction_data.type
+    transaction_to_update.description = transaction_data.description
+    transaction_to_update.transaction_date = transaction_data.transaction_date
+    transaction_to_update.category_id = transaction_data.category_id
+    
+    db.commit()
+    
+    return {"message": "Transaction updated successfully!"}
+
+@app.delete("/transactions/{transaction_id}")
+def delete_transaction(
+        transaction_id: int, 
+        db: Session = Depends(get_db), 
+        current_user: User = Depends(get_current_user)
+    ):
+    
+    transaction_to_delete = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    
+    if not transaction_to_delete:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if transaction_to_delete.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only delete your own transactions")
+        
+    db.delete(transaction_to_delete)
+    db.commit()
+    
+    return {"message": "Transaction deleted successfully!"}
