@@ -1,15 +1,20 @@
 # needed imports
 
 from fastapi import FastAPI, HTTPException, Depends
+from typing import Optional
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from datetime import date, datetime, timedelta
-from models import User, SessionLocal
+from models import User, Transaction, SessionLocal, Base, engine, Category
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordRequestForm
 import jwt
 
 app = FastAPI()
+# Base.metadata.drop_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "flo-super-secret-key-for-jwt"
 ALGORITHM = "HS256"
@@ -24,6 +29,11 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+
+class CategoryCreate(BaseModel):
+    name: str
+    keywords: str = None
+    monthly_limit: float = None
 
 class TransactionCreate(BaseModel):
     amount: float
@@ -81,16 +91,13 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
 
 # earning the VIP wristband
 @app.post("/login")
-def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
-    
-    # check email and password
-    user = db.query(User).filter(User.email == user_data.email).first()
-    if not user or not pwd_context.verify(user_data.password, user.password_hash):
+def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not pwd_context.verify(form_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # make a wristband
     expiration_time = datetime.utcnow() + timedelta(hours=2)
-    
+
     payload = {
         "sub" : str(user.id),
         "exp" : expiration_time
@@ -103,6 +110,21 @@ def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "message": "Login successful"
     }
+
+@app.post("/categories")
+def create_category(
+    category_data: CategoryCreate, 
+    db: Session = Depends(get_db)
+):
+    new_category = Category(
+        name=category_data.name,
+        keywords=category_data.keywords,
+        monthly_limit=category_data.monthly_limit
+    )
+    db.add(new_category)
+    db.commit()
+    db.refresh(new_category)
+    return {"message": "Category created!", "category_id": new_category.id}
 
 @app.post("/transactions")
 def add_transaction(
@@ -128,10 +150,17 @@ def add_transaction(
 @app.get("/transactions")
 def get_transactions(
         db: Session = Depends(get_db),                 
-        current_user: User = Depends(get_current_user)
+        current_user: User = Depends(get_current_user),
+        category_id: Optional[int] = None
     ):
     
-    user_transactions = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()    
+    query = db.query(Transaction).filter(Transaction.user_id == current_user.id)    
+    
+    if category_id:
+        query = query.filter(Transaction.category_id == category_id)
+    
+    user_transactions = query.limit(50).all()
+    
     return user_transactions
 
 @app.put("/transactions/{transaction_id}")
@@ -180,3 +209,61 @@ def delete_transaction(
     db.commit()
     
     return {"message": "Transaction deleted successfully!"}
+
+@app.get("/analytics/summary")
+def get_category_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    summary_data = db.query(
+        Category.name, 
+        func.sum(Transaction.amount).label("total_spent")
+    ).join(
+        Transaction, Category.id == Transaction.category_id
+    ).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.type == "Expense" 
+    ).group_by(Category.name).all()
+
+    result = []
+    for row in summary_data:
+        result.append({
+            "category_name": row.name,
+            "total_spent": row.total_spent
+        })
+    
+    return result
+
+@app.get("/analytics/rolling-average")
+def get_rolling_average(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    today = datetime.utcnow().date()
+    ninety_days_ago = today - timedelta(days=90)
+    
+    total_spent = db.query(func.sum(Transaction.amount)).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.type == "Expense",
+        Transaction.transaction_date >= ninety_days_ago
+    ).scalar() 
+    
+    if total_spent is None:
+        total_spent = 0.0
+        
+    monthly_average = total_spent / 3
+    
+    return {
+        "timeframe": "Last 90 Days",
+        "total_spent_in_window": total_spent,
+        "monthly_average": round(monthly_average, 2)
+    }
+
+# TEMPORARY ROUTE: Delete this after you find your email!
+@app.get("/dev/users")
+def get_all_users(db: Session = Depends(get_db)):
+    # Grab all users from the database
+    all_users = db.query(User).all()
+    
+    # Return just their IDs and Emails (we don't want to see the password hashes)
+    return [{"user_id": user.id, "email": user.email} for user in all_users]
