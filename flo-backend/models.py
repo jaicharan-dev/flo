@@ -1,3 +1,4 @@
+import os
 from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, create_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
@@ -49,7 +50,11 @@ class Session(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="sessions")
 
-DATABASE_URL = "postgresql://postgres:krishna@localhost:5432/flo_db" 
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:krishna@localhost:5432/flo_db"    
+)
+ 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
