@@ -114,3 +114,10 @@ def create_category(
     db.commit()
     db.refresh(new_category)
     return {"message": "Category created!", "category_id": new_category.id}
+
+# --- 6. GET /categories ---
+@router.get("/categories")
+def get_categories(db: Session = Depends(get_db)):
+    # Fetch all categories from the database
+    categories = db.query(Category).all()
+    return categories
