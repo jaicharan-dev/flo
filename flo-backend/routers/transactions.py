@@ -42,7 +42,8 @@ def add_transaction(
 def get_transactions(
         db: Session = Depends(get_db),                 
         current_user: User = Depends(get_current_user),
-        category_id: Optional[int] = None
+        category_id: Optional[int] = None,
+        limit: int = 5
     ):
     
     query = db.query(Transaction).filter(Transaction.user_id == current_user.id)    
@@ -50,7 +51,7 @@ def get_transactions(
     if category_id:
         query = query.filter(Transaction.category_id == category_id)
     
-    user_transactions = query.limit(50).all()
+    user_transactions = query.order_by(Transaction.id.desc()).limit(limit).all()
     return user_transactions
 
 # --- 3. PUT /transactions/{transaction_id} ---
