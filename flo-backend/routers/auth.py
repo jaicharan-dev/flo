@@ -77,7 +77,7 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
     }
 
 @router.post("/refresh")
-def refresh_access_token(refresh_token: str = fastapi.Body(embed=True)):
+def refresh_access_token(refresh_token: str = Body(embed=True)):
     try:
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         
