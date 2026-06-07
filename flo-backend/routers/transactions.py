@@ -122,3 +122,39 @@ def get_categories(db: Session = Depends(get_db)):
     # Fetch all categories from the database
     categories = db.query(Category).all()
     return categories
+
+# --- 7. PUT /categories/{category_id} (Edit) ---
+@router.put("/categories/{category_id}")
+def update_category(
+    category_id: int, 
+    category_data: CategoryCreate, # Reusing your existing Pydantic model!
+    db: Session = Depends(get_db)
+):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    # Update the fields
+    category.name = category_data.name
+    category.keywords = category_data.keywords
+    category.monthly_limit = category_data.monthly_limit
+
+    db.commit()
+    db.refresh(category)
+    return {"message": "Category updated successfully!"}
+
+# --- 8. DELETE /categories/{category_id} ---
+@router.delete("/categories/{category_id}")
+def delete_category(
+    category_id: int, 
+    db: Session = Depends(get_db)
+):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    # When this runs, PostgreSQL will automatically intercept it 
+    # and safely SET NULL on all linked transactions!
+    db.delete(category)
+    db.commit()
+    return {"message": "Category deleted. Transactions preserved as Uncategorized."}
