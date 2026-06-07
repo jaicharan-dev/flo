@@ -35,7 +35,7 @@ class Transaction(Base):
     transaction_date = Column(Date, nullable=False)
     
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
 
     owner = relationship("User", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
