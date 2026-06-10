@@ -81,7 +81,7 @@ def update_transaction(
     return {"message": "Transaction updated successfully!"}
 
 # --- 4. DELETE /transactions/{transaction_id} ---
-@router.delete("/transactions/{transaction_id}")
+@router.delete("/{transaction_id}")
 def delete_transaction(
         transaction_id: int, 
         db: Session = Depends(get_db), 
