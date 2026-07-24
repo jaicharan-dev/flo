@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
@@ -8,7 +9,7 @@ import jwt
 from models import SessionLocal, User
 from schemas import UserCreate
 
-SECRET_KEY = "YOUR_SECRET_KEY" 
+SECRET_KEY = os.getenv("SECRET_KEY", "my_local_development_key") 
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
