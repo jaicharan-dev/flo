@@ -2,6 +2,7 @@ import re
 from typing import List, Optional
 from dataclasses import dataclass
 from models import Category
+from services.llm_categorizer import LLMCategorizer, LLMCategorizationResponse
 
 CONFIDENCE_THRESHOLD = 0.8
 
@@ -10,6 +11,7 @@ CONFIDENCE_THRESHOLD = 0.8
 class CategorizationResult:
     category_id: Optional[int]
     category_name: Optional[str]
+    proposed_category_name: Optional[str]
     confidence_score: float
     is_confident: bool
     reason: str
@@ -42,13 +44,15 @@ class CategorizationEngine:
     def categorize(
         cls, 
         description: str, 
-        user_categories: List[Category]
+        user_categories: List[Category],
+        use_llm_fallback: bool = True
     ) -> CategorizationResult:
         normalized_desc = cls._normalize_text(description)
         if not normalized_desc or not user_categories:
             return CategorizationResult(
                 category_id=None,
                 category_name=None,
+                proposed_category_name=None,
                 confidence_score=0.0,
                 is_confident=False,
                 reason="No input description or no user categories available."
@@ -89,40 +93,65 @@ class CategorizationEngine:
                         "kw_len": len(kw)
                     })
 
-        if not candidates:
+        if candidates:
+            candidates.sort(key=lambda c: (c["score"], c["kw_len"]), reverse=True)
+            top_match = candidates[0]
+            top_score = top_match["score"]
+            tied_categories = {c["category"].id for c in candidates if c["score"] == top_score}
+
+            if top_score >= CONFIDENCE_THRESHOLD and len(tied_categories) == 1:
+                return CategorizationResult(
+                    category_id=top_match["category"].id,
+                    category_name=top_match["category"].name,
+                    proposed_category_name=None,
+                    confidence_score=top_score,
+                    is_confident=True,
+                    reason=f"Matched keyword '{top_match['keyword']}' in category '{top_match['category'].name}' ({top_match['match_type']} match)"
+                )
+
+        # Deterministic match was not confident; fall back to LLM if enabled
+        if not use_llm_fallback:
             return CategorizationResult(
                 category_id=None,
                 category_name=None,
+                proposed_category_name=None,
                 confidence_score=0.0,
                 is_confident=False,
-                reason="No confident match found among user categories."
+                reason="No confident deterministic match found."
             )
 
-        # Sort candidates by score descending, then keyword length descending
-        candidates.sort(key=lambda c: (c["score"], c["kw_len"]), reverse=True)
-
-        top_match = candidates[0]
-        top_score = top_match["score"]
+        llm_res: LLMCategorizationResponse = LLMCategorizer.categorize(description, user_categories)
         
-        # Check for ambiguity: different categories matching with identical top score
-        tied_categories = {c["category"].id for c in candidates if c["score"] == top_score}
-        if len(tied_categories) > 1 and top_score >= CONFIDENCE_THRESHOLD:
-            cat_names = list({c["category"].name for c in candidates if c["score"] == top_score})
+        # If LLM selected an existing category ID
+        if llm_res.category_id is not None:
+            matched_cat = next((c for c in user_categories if c.id == llm_res.category_id), None)
+            if matched_cat:
+                is_conf = llm_res.confidence >= CONFIDENCE_THRESHOLD
+                return CategorizationResult(
+                    category_id=matched_cat.id if is_conf else None,
+                    category_name=matched_cat.name if is_conf else None,
+                    proposed_category_name=None,
+                    confidence_score=llm_res.confidence,
+                    is_confident=is_conf,
+                    reason=f"LLM fallback selected category '{matched_cat.name}': {llm_res.reason}"
+                )
+
+        # If LLM proposed a new category
+        if llm_res.proposed_category_name:
             return CategorizationResult(
                 category_id=None,
                 category_name=None,
-                confidence_score=0.5,
+                proposed_category_name=llm_res.proposed_category_name,
+                confidence_score=llm_res.confidence,
                 is_confident=False,
-                reason=f"Ambiguous keyword match between categories: {', '.join(cat_names)}"
+                reason=f"LLM proposed new category '{llm_res.proposed_category_name}': {llm_res.reason}"
             )
 
-        is_confident = top_score >= CONFIDENCE_THRESHOLD
-        reason = f"Matched keyword '{top_match['keyword']}' in category '{top_match['category'].name}' ({top_match['match_type']} match)"
-
         return CategorizationResult(
-            category_id=top_match["category"].id if is_confident else None,
-            category_name=top_match["category"].name if is_confident else None,
-            confidence_score=top_score,
-            is_confident=is_confident,
-            reason=reason
+            category_id=None,
+            category_name=None,
+            proposed_category_name=None,
+            confidence_score=llm_res.confidence,
+            is_confident=False,
+            reason=f"LLM could not determine category: {llm_res.reason}"
         )
