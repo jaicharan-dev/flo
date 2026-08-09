@@ -1,10 +1,12 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from models import SessionLocal, Transaction, Category, User
-from routers.auth import get_current_user
 
+from models import SessionLocal, User
+from routers.auth import get_current_user
 from schemas import TransactionCreate, CategoryCreate
+from services.transaction_service import TransactionService
+from services.category_service import CategoryService
 
 router = APIRouter(
     prefix="/transactions",
@@ -25,136 +27,75 @@ def add_transaction(
     db: Session = Depends(get_db),       
     current_user: User = Depends(get_current_user) 
 ):
-    new_transaction = Transaction(
-        amount=transaction_data.amount,
-        type=transaction_data.type,
-        description=transaction_data.description,
-        transaction_date=transaction_data.transaction_date,
-        category_id=transaction_data.category_id,
-        user_id=current_user.id 
-    )
-    db.add(new_transaction)
-    db.commit()
+    TransactionService.create_transaction(db, current_user.id, transaction_data)
     return {"message": "Transaction saved successfully!"}
 
 # --- 2. GET /transactions ---
 @router.get("/")
 def get_transactions(
-        db: Session = Depends(get_db),                 
-        current_user: User = Depends(get_current_user),
-        category_id: Optional[int] = None,
-        limit: int = 5
-    ):
-    
-    query = db.query(Transaction).filter(Transaction.user_id == current_user.id)    
-    
-    if category_id:
-        query = query.filter(Transaction.category_id == category_id)
-    
-    user_transactions = query.order_by(Transaction.id.desc()).limit(limit).all()
-    return user_transactions
+    db: Session = Depends(get_db),                 
+    current_user: User = Depends(get_current_user),
+    category_id: Optional[int] = None,
+    limit: int = 5
+):
+    return TransactionService.get_user_transactions(db, current_user.id, category_id=category_id, limit=limit)
 
 # --- 3. PUT /transactions/{transaction_id} ---
 @router.put("/{transaction_id}")
 def update_transaction(
-        transaction_id: int,                           
-        transaction_data: TransactionCreate,           
-        db: Session = Depends(get_db),                 
-        current_user: User = Depends(get_current_user) 
-    ):
-    
-    transaction_to_update = db.query(Transaction).filter(Transaction.id == transaction_id).first()
-    
-    if not transaction_to_update:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-        
-    if transaction_to_update.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only edit your own transactions")
-        
-    transaction_to_update.amount = transaction_data.amount
-    transaction_to_update.type = transaction_data.type
-    transaction_to_update.description = transaction_data.description
-    transaction_to_update.transaction_date = transaction_data.transaction_date
-    transaction_to_update.category_id = transaction_data.category_id
-    
-    db.commit()
+    transaction_id: int,                           
+    transaction_data: TransactionCreate,           
+    db: Session = Depends(get_db),                 
+    current_user: User = Depends(get_current_user) 
+):
+    TransactionService.update_transaction(db, current_user.id, transaction_id, transaction_data)
     return {"message": "Transaction updated successfully!"}
 
 # --- 4. DELETE /transactions/{transaction_id} ---
 @router.delete("/{transaction_id}")
 def delete_transaction(
-        transaction_id: int, 
-        db: Session = Depends(get_db), 
-        current_user: User = Depends(get_current_user)
-    ):
-    
-    transaction_to_delete = db.query(Transaction).filter(Transaction.id == transaction_id).first()
-    
-    if not transaction_to_delete:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-        
-    if transaction_to_delete.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only delete your own transactions")
-        
-    db.delete(transaction_to_delete)
-    db.commit()
+    transaction_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    TransactionService.delete_transaction(db, current_user.id, transaction_id)
     return {"message": "Transaction deleted successfully!"}
 
 # --- 5. POST /categories ---
 @router.post("/categories")
 def create_category(
     category_data: CategoryCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    new_category = Category(
-        name=category_data.name,
-        keywords=category_data.keywords,
-        monthly_limit=category_data.monthly_limit
-    )
-    db.add(new_category)
-    db.commit()
-    db.refresh(new_category)
+    new_category = CategoryService.create_category(db, current_user.id, category_data)
     return {"message": "Category created!", "category_id": new_category.id}
 
 # --- 6. GET /categories ---
 @router.get("/categories")
-def get_categories(db: Session = Depends(get_db)):
-    # Fetch all categories from the database
-    categories = db.query(Category).all()
-    return categories
+def get_categories(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return CategoryService.get_user_categories(db, current_user.id)
 
 # --- 7. PUT /categories/{category_id} (Edit) ---
 @router.put("/categories/{category_id}")
 def update_category(
     category_id: int, 
-    category_data: CategoryCreate, # Reusing your existing Pydantic model!
-    db: Session = Depends(get_db)
+    category_data: CategoryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    category = db.query(Category).filter(Category.id == category_id).first()
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    # Update the fields
-    category.name = category_data.name
-    category.keywords = category_data.keywords
-    category.monthly_limit = category_data.monthly_limit
-
-    db.commit()
-    db.refresh(category)
+    CategoryService.update_category(db, current_user.id, category_id, category_data)
     return {"message": "Category updated successfully!"}
 
 # --- 8. DELETE /categories/{category_id} ---
 @router.delete("/categories/{category_id}")
 def delete_category(
     category_id: int, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    category = db.query(Category).filter(Category.id == category_id).first()
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    # When this runs, PostgreSQL will automatically intercept it 
-    # and safely SET NULL on all linked transactions!
-    db.delete(category)
-    db.commit()
+    CategoryService.delete_category(db, current_user.id, category_id)
     return {"message": "Category deleted. Transactions preserved as Uncategorized."}
