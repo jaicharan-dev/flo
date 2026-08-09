@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, create_engine
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, DateTime, UniqueConstraint, create_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 
@@ -13,17 +13,23 @@ class User(Base):
     password_hash = Column(String, nullable=False)
 
     transactions = relationship("Transaction", back_populates="owner")
+    categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user")
 
 class Category(Base):
     __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_user_category_name"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
     keywords = Column(String)
     monthly_limit = Column(Float, nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     transactions = relationship("Transaction", back_populates="category")
+    user = relationship("User", back_populates="categories")
 
 class Transaction(Base):
     __tablename__ = "transactions"
