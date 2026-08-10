@@ -1,9 +1,12 @@
 import os
-from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+from models import SessionLocal, User, Transaction, Category
+from routers.auth import get_current_user
 from google.antigravity import Agent, LocalAgentConfig
 from dotenv import load_dotenv
 
-# Load environment variables (this will pull your GEMINI_API_KEY)
 load_dotenv()
 
 router = APIRouter(
@@ -11,21 +14,80 @@ router = APIRouter(
     tags=["AI Agent"]
 )
 
+class QueryRequest(BaseModel):
+    query: str
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 @router.get("/test")
 async def test_ai():
     try:
-        # Initialize the Antigravity configuration
         config = LocalAgentConfig()
-        
-        # Open an async context manager for the Agent
         async with Agent(config) as agent:
-            # Send a prompt to the agent
             response = await agent.chat("Say hello from Flo AI!")
-            
-            # Await the text generation natively
             text = await response.text()
-            
             return {"status": "success", "ai_response": text}
-            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Antigravity AI Error: {str(e)}")
+
+@router.post("/query")
+async def ai_query(
+    request: QueryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_query = request.query.strip().lower()
+    
+    txs = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
+    categories = db.query(Category).filter(Category.user_id == current_user.id).all()
+    cat_map = {c.id: c.name for c in categories}
+    
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            config = LocalAgentConfig()
+            async with Agent(config) as agent:
+                context_str = f"User has {len(txs)} transactions. Total expenses: {sum(t.amount for t in txs if t.type == 'Expense')}."
+                prompt = f"{context_str}\nUser Question: {request.query}\nProvide a concise, clear answer as Flo financial assistant."
+                response = await agent.chat(prompt)
+                text = await response.text()
+                return {"response": text}
+        except Exception:
+            pass
+
+    total_spent = sum(t.amount for t in txs if t.type == "Expense")
+    total_income = sum(t.amount for t in txs if t.type == "Income")
+    
+    cat_totals = {}
+    for t in txs:
+        if t.type == "Expense":
+            c_name = cat_map.get(t.category_id, "Uncategorized")
+            cat_totals[c_name] = cat_totals.get(c_name, 0.0) + t.amount
+
+    top_cat = max(cat_totals.items(), key=lambda x: x[1]) if cat_totals else ("None", 0.0)
+    top_tx = max([t for t in txs if t.type == "Expense"], key=lambda x: x.amount, default=None)
+
+    if "food" in user_query or "dining" in user_query or "eat" in user_query:
+        food_spent = sum(t.amount for t in txs if t.type == "Expense" and cat_map.get(t.category_id, "").lower() in ["food", "dining", "restaurants", "groceries"])
+        ans = f"You spent ₹{food_spent:,.2f} on Food & Dining."
+    elif "most" in user_query or "biggest category" in user_query or "top category" in user_query:
+        ans = f"Your highest spending category is **{top_cat[0]}** with total expenses of ₹{top_cat[1]:,.2f}."
+    elif "increase" in user_query or "why" in user_query or "higher" in user_query:
+        if top_tx:
+            ans = f"Your spending increased primarily due to major expenses in **{cat_map.get(top_tx.category_id, 'Uncategorized')}**, such as ₹{top_tx.amount:,.2f} for '{top_tx.description}'."
+        else:
+            ans = f"Your spending total stands at ₹{total_spent:,.2f} across {len(txs)} transactions."
+    elif "biggest" in user_query or "highest" in user_query or "largest" in user_query:
+        if top_tx:
+            ans = f"Your largest single expense was ₹{top_tx.amount:,.2f} for '{top_tx.description}' on {top_tx.transaction_date}."
+        else:
+            ans = "No large expenses recorded yet."
+    else:
+        ans = f"Based on your financial activity: Total Income is ₹{total_income:,.2f}, Total Expenses are ₹{total_spent:,.2f} across {len(txs)} transactions. Top category: {top_cat[0]} (₹{top_cat[1]:,.2f})."
+
+    return {"response": ans}

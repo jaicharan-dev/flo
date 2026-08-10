@@ -29,3 +29,31 @@ def get_rolling_average(
     current_user: User = Depends(get_current_user) 
 ):
     return AnalyticsService.get_rolling_average(db, current_user.id)
+
+@router.get("/kpis")
+def get_kpis(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AnalyticsService.get_kpis(db, current_user.id)
+
+@router.get("/budget-vs-actual")
+def get_budget_vs_actual(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AnalyticsService.get_budget_vs_actual(db, current_user.id)
+
+@router.get("/trends")
+def get_trends(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AnalyticsService.get_trends(db, current_user.id)
+
+@router.get("/stats-and-outliers")
+def get_stats_and_outliers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AnalyticsService.get_stats_and_outliers(db, current_user.id)
