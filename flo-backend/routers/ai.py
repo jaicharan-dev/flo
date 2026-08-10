@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from models import SessionLocal, User, Transaction, Category
 from routers.auth import get_current_user
-from google.antigravity import Agent, LocalAgentConfig
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,14 +26,18 @@ def get_db():
 
 @router.get("/test")
 async def test_ai():
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        return {"status": "disabled", "message": "GEMINI_API_KEY not configured."}
     try:
-        config = LocalAgentConfig()
-        async with Agent(config) as agent:
-            response = await agent.chat("Say hello from Flo AI!")
-            text = await response.text()
-            return {"status": "success", "ai_response": text}
+        client = genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents="Say hello from Flo AI!"
+        )
+        return {"status": "success", "ai_response": response.text}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Antigravity AI Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gemini AI Error: {str(e)}")
 
 @router.post("/query")
 async def ai_query(
@@ -42,27 +46,29 @@ async def ai_query(
     current_user: User = Depends(get_current_user)
 ):
     user_query = request.query.strip().lower()
-    
+
     txs = db.query(Transaction).filter(Transaction.user_id == current_user.id).all()
     categories = db.query(Category).filter(Category.user_id == current_user.id).all()
     cat_map = {c.id: c.name for c in categories}
-    
+
     gemini_key = os.getenv("GEMINI_API_KEY")
     if gemini_key:
         try:
-            config = LocalAgentConfig()
-            async with Agent(config) as agent:
-                context_str = f"User has {len(txs)} transactions. Total expenses: {sum(t.amount for t in txs if t.type == 'Expense')}."
-                prompt = f"{context_str}\nUser Question: {request.query}\nProvide a concise, clear answer as Flo financial assistant."
-                response = await agent.chat(prompt)
-                text = await response.text()
-                return {"response": text}
+            client = genai.Client(api_key=gemini_key)
+            context_str = f"User has {len(txs)} transactions. Total expenses: {sum(t.amount for t in txs if t.type == 'Expense')}."
+            prompt = f"{context_str}\nUser Question: {request.query}\nProvide a concise, clear answer as Flo financial assistant."
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            if response.text:
+                return {"response": response.text}
         except Exception:
             pass
 
     total_spent = sum(t.amount for t in txs if t.type == "Expense")
     total_income = sum(t.amount for t in txs if t.type == "Income")
-    
+
     cat_totals = {}
     for t in txs:
         if t.type == "Expense":
@@ -90,4 +96,4 @@ async def ai_query(
     else:
         ans = f"Based on your financial activity: Total Income is ₹{total_income:,.2f}, Total Expenses are ₹{total_spent:,.2f} across {len(txs)} transactions. Top category: {top_cat[0]} (₹{top_cat[1]:,.2f})."
 
-    return {"response": ans}
+    return {"response": ans}
