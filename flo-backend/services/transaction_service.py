@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from models import Transaction, Category
 from schemas import TransactionCreate
+from services.categorization_engine import CategorizationEngine
 
 
 class TransactionService:
@@ -21,20 +22,32 @@ class TransactionService:
 
     @staticmethod
     def create_transaction(db: Session, user_id: int, transaction_data: TransactionCreate) -> Transaction:
-        if transaction_data.category_id is not None:
+        category_id = transaction_data.category_id
+
+        if category_id is not None:
             category = db.query(Category).filter(
-                Category.id == transaction_data.category_id,
+                Category.id == category_id,
                 Category.user_id == user_id
             ).first()
             if not category:
                 raise HTTPException(status_code=400, detail="Invalid category ID or category does not belong to you")
+        else:
+            # Auto-categorization engine fallback
+            user_categories = db.query(Category).filter(Category.user_id == user_id).all()
+            cat_result = CategorizationEngine.categorize(
+                description=transaction_data.description,
+                user_categories=user_categories,
+                use_llm_fallback=True
+            )
+            if cat_result and cat_result.category_id:
+                category_id = cat_result.category_id
 
         new_transaction = Transaction(
             amount=transaction_data.amount,
             type=transaction_data.type,
             description=transaction_data.description,
             transaction_date=transaction_data.transaction_date,
-            category_id=transaction_data.category_id,
+            category_id=category_id,
             user_id=user_id
         )
         db.add(new_transaction)

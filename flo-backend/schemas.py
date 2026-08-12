@@ -20,4 +20,7 @@ class TransactionCreate(BaseModel):
     type: str
     description: str
     transaction_date: date
-    category_id: int
+    category_id: Optional[int] = None
+
+class ParseRequest(BaseModel):
+    text: str

@@ -32,7 +32,7 @@ async def test_ai():
     try:
         client = genai.Client(api_key=gemini_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents="Say hello from Flo AI!"
         )
         return {"status": "success", "ai_response": response.text}
@@ -55,10 +55,20 @@ async def ai_query(
     if gemini_key:
         try:
             client = genai.Client(api_key=gemini_key)
-            context_str = f"User has {len(txs)} transactions. Total expenses: {sum(t.amount for t in txs if t.type == 'Expense')}."
-            prompt = f"{context_str}\nUser Question: {request.query}\nProvide a concise, clear answer as Flo financial assistant."
+            txs_recent = sorted(txs, key=lambda x: x.transaction_date, reverse=True)[:30]
+            tx_summary = "\n".join(
+                [f"- [{t.transaction_date}] {t.type}: ₹{t.amount:,.2f} | Category: {cat_map.get(t.category_id, 'Uncategorized')} | Description: '{t.description}'" for t in txs_recent]
+            )
+            context_str = (
+                f"User Financial Context:\n"
+                f"Total Transactions: {len(txs)}\n"
+                f"Total Income: ₹{sum(t.amount for t in txs if t.type == 'Income'):,.2f}\n"
+                f"Total Expenses: ₹{sum(t.amount for t in txs if t.type == 'Expense'):,.2f}\n"
+                f"Recent Transactions:\n{tx_summary if tx_summary else 'None'}\n"
+            )
+            prompt = f"{context_str}\nUser Question: {request.query}\nProvide a concise, helpful answer as Flo financial assistant."
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.0-flash",
                 contents=prompt
             )
             if response.text:

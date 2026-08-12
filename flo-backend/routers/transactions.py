@@ -2,11 +2,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from models import SessionLocal, User
+from models import SessionLocal, User, Category
 from routers.auth import get_current_user
-from schemas import TransactionCreate, CategoryCreate
+from schemas import TransactionCreate, CategoryCreate, ParseRequest
 from services.transaction_service import TransactionService
 from services.category_service import CategoryService
+from services.transaction_parser import TransactionParser
+from services.categorization_engine import CategorizationEngine
 
 router = APIRouter(
     prefix="/transactions",
@@ -19,6 +21,34 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# --- 0. POST /transactions/parse (Natural Language Parser) ---
+@router.post("/parse")
+def parse_transaction_text(
+    payload: ParseRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    parsed = TransactionParser.parse(text=payload.text)
+    user_categories = db.query(Category).filter(Category.user_id == current_user.id).all()
+    
+    suggested_category_id = None
+    suggested_category_name = None
+    if parsed.description:
+        cat_result = CategorizationEngine.categorize(
+            description=parsed.description,
+            user_categories=user_categories,
+            use_llm_fallback=True
+        )
+        if cat_result:
+            suggested_category_id = cat_result.category_id
+            suggested_category_name = cat_result.category_name or cat_result.proposed_category_name
+
+    return {
+        "parsed_transaction": parsed,
+        "suggested_category_id": suggested_category_id,
+        "suggested_category_name": suggested_category_name
+    }
 
 # --- 1. POST /transactions ---
 @router.post("/")

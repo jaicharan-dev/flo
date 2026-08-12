@@ -41,7 +41,7 @@ class ParsedTransaction(BaseModel):
 
 
 class TransactionParser:
-    DEFAULT_MODEL = "gemini-2.5-flash"
+    DEFAULT_MODEL = "gemini-2.0-flash"
 
     @classmethod
     def parse(
