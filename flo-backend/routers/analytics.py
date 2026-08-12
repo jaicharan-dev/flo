@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from models import SessionLocal, User
+from models import SessionLocal, User, get_db
 from routers.auth import get_current_user
 from services.analytics_service import AnalyticsService
 
@@ -8,13 +8,6 @@ router = APIRouter(
     prefix="/analytics",
     tags=["Analytics"]
 )
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/summary")
 def get_category_summary(

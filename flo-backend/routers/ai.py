@@ -2,7 +2,7 @@ import os
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from models import SessionLocal, User, Transaction, Category
+from models import SessionLocal, User, Transaction, Category, get_db
 from routers.auth import get_current_user
 from google import genai
 from dotenv import load_dotenv
@@ -16,13 +16,6 @@ router = APIRouter(
 
 class QueryRequest(BaseModel):
     query: str
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/test")
 async def test_ai():

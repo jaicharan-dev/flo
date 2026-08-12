@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from models import SessionLocal, User, Category
+from models import SessionLocal, User, Category, get_db
 from routers.auth import get_current_user
 from schemas import TransactionCreate, CategoryCreate, ParseRequest
 from services.transaction_service import TransactionService
@@ -14,13 +14,6 @@ router = APIRouter(
     prefix="/transactions",
     tags=["Transactions & Categories"]
 )
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 # --- 0. POST /transactions/parse (Natural Language Parser) ---
 @router.post("/parse")

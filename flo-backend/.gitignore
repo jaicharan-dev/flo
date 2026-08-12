@@ -20,4 +20,5 @@ Thumbs.db
 
 # Database logs or local dumps (optional)
 *.log
+*.db
 local_db_dump.sql

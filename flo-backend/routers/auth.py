@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 import jwt
 
-from models import SessionLocal, User
+from models import SessionLocal, User, get_db
 from schemas import UserCreate
 
 SECRET_KEY = os.getenv("SECRET_KEY", "my_local_development_key") 
@@ -22,13 +22,6 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"]
 )
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("/register")
