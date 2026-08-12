@@ -1,19 +1,29 @@
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 
 from models import SessionLocal, User, Category, get_db
 from routers.auth import get_current_user
-from schemas import TransactionCreate, CategoryCreate, ParseRequest
+from schemas import TransactionCreate, CategoryCreate, ParseRequest, CSVUploadResponse
 from services.transaction_service import TransactionService
 from services.category_service import CategoryService
 from services.transaction_parser import TransactionParser
 from services.categorization_engine import CategorizationEngine
+from services.csv_service import CSVService
 
 router = APIRouter(
     prefix="/transactions",
     tags=["Transactions & Categories"]
 )
+
+# --- 0. POST /transactions/upload-csv (Bulk CSV Statement Ingestion) ---
+@router.post("/upload-csv", response_model=CSVUploadResponse)
+def upload_csv_transactions(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return CSVService.process_csv_upload(db=db, user_id=current_user.id, file=file)
 
 # --- 0. POST /transactions/parse (Natural Language Parser) ---
 @router.post("/parse")

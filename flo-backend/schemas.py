@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date
-from typing import Optional
+from typing import Optional, List
 
 class UserCreate(BaseModel):
     email: str
@@ -24,3 +24,9 @@ class TransactionCreate(BaseModel):
 
 class ParseRequest(BaseModel):
     text: str
+
+class CSVUploadResponse(BaseModel):
+    imported_count: int
+    skipped_count: int
+    errors: List[str]
+    message: str
