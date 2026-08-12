@@ -24,7 +24,7 @@ async def test_ai():
         return {"status": "disabled", "message": "GEMINI_API_KEY not configured."}
     try:
         client = genai.Client(api_key=gemini_key)
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model="gemini-2.0-flash",
             contents="Say hello from Flo AI!"
         )
@@ -60,7 +60,7 @@ async def ai_query(
                 f"Recent Transactions:\n{tx_summary if tx_summary else 'None'}\n"
             )
             prompt = f"{context_str}\nUser Question: {request.query}\nProvide a concise, helpful answer as Flo financial assistant."
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=prompt
             )
